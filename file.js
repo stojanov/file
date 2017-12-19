@@ -22,7 +22,7 @@ function File(path, filename, stats) {
     if (!path)
         throw new Error("A file path is required.");
     if (!filename)
-        throw new Errpr("A file name is required.");
+        throw new Error("A file name is required.");
 
     const fullpath = path + '/' + filename;
 
