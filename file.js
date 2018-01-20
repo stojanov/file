@@ -7,12 +7,10 @@ const getFileEx = fileName => {
     if (!fileEx)
         throw new Error("Error... :'(");
 
-    if (fileEx) {
-        const ex = fileEx[0];
-        return {
-            name: fileName.replace(ex, ''),
-            ex: ex.replace('.', '')
-        }
+    const ex = fileEx[0];
+    return {
+        name: fileName.replace(ex, ''),
+        ex: ex.replace('.', '')
     }
 }
 
