@@ -141,12 +141,14 @@ File.prototype.getLines = function () {
     return newPromise(resolver => {
         const ReadStream = this.getReadStream();
 
+        if(!ReadStream) 
+            throw new Error("Cannot get readstream from file:", this.fullPath);
+
         let currentBuffer = '';
         let lines = [];
 
-        try {
-
-            ReadStream.on('data', data => {
+        ReadStream.on('data', data => {
+            try {
                 currentBuffer += data;
                 
                 let indexOfNewLine = currentBuffer.indexOf('\n');
@@ -157,18 +159,16 @@ File.prototype.getLines = function () {
                     indexOfNewLine = currentBuffer.indexOf('\n');
                     lines.push(line);
                 }
-            });
-
-            ReadStream.on('end', () => {
-                if(currentBuffer.length > 0)
-                    lines.push(currentBuffer);
-                resolver(false, lines);
-            });
-
-        } catch (err) {
-            if(err)
+            } catch (err) {
                 resolver(err, lines)
-        }
+            }
+        });
+
+        ReadStream.on('end', () => {
+            if(currentBuffer.length > 0)
+                lines.push(currentBuffer);
+            resolver(false, lines);
+        });
     })
 }
 
