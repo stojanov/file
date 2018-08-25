@@ -2,234 +2,152 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Utility Functions
+ * Functional programing magic
  */
 
-// A simple function for getting the name and extenstion for a given string.
-const getFileEx = fileName => {
-    const fileEx = fileName.match(/\.[0-9a-z]+$/i)[0];
-    return {
-        name: fileName.replace(fileEx, ''),
-        ex: fileEx.replace('.', '')
-    }
-}
-
-// Wrapper for returning promises
-const resolveFunction = (res, rej) => (err, data) => !!err ? rej(err) : res(data);
+const resolveFunction = (res, rej) => (err, data) => err ? rej(err) : res(data);
 
 const newPromise = fn => new Promise((resolve, reject) => {
     fn(resolveFunction(resolve, reject));
 });
 
 /**
- * Main file function
+ * Main File init
  */
 
-function File(filepath, filename) {
+function File(filepath) {
 
-    if (!filepath)
-        throw new Error("A file path is required.");
-    if (!filename)
-        throw new Error("A file name is required.");
-    
-    const fullpath = path.join(filepath, filename);
+    if (typeof filepath === 'string')
+        throw new Error(`A file path is required, got ${filepath}`);
 
-    fs.exists(fullpath, exists => {
-        this.exists = exists;
-    });
+    this.exists = fs.existsSync(filepath);
 
-    let prop = {
-        name : filename,
-        ex : ''
-    };
-    
-    if (filename.indexOf('.') != -1)
-        prop = getFileEx(filename);
-
-    this.filePath = filepath;
-    this.fileName = filename;
-    this.fullPath = fullpath;
-    this.extension = prop.ex;
-    this.name = prop.name;
+    this.filepath = filepath;
+    this.filename = path.basename(filepath);
+    this.filedir = path.dirname(filepath);
+    this.fileex = path.extname(filepath);
+    this.readstream = null;
+    this.writestream = null;
 }
 
-// ---------------------------------------------------------------
 // Stats
-// ---------------------------------------------------------------
 
-File.prototype.getStatsSync = function () {
+File.prototype.exists = function () {
+    return fs.existsSync(this.filepath);
+};
 
-    if (!this.exists) throw new Error("File doesn't exist. ");
+File.prototype.checkIfExists = function () {
+    if (!this.exists)
+        throw new Error(this.filepath + ": File doesn't exist.");
+};
 
-    return fs.statSync(this.fullPath);
-}
+File.prototype.getStatSync = function () {
+    this.checkIfExists();
+
+    return fs.statSync(this.filepath);
+};
 
 File.prototype.getStats = function () {
-
-    if (!this.exists) throw new Error("File doesn't exist. ");
+    this.checkIfExists();
 
     return newPromise(resolver => {
-        fs.stats(this.fullPath, resolver);
+        fs.stats(this.filepath, resolver);
     });
-}
+};
 
-// ---------------------------------------------------------------
-// Renaming of a file
-// ---------------------------------------------------------------
-
-File.prototype.rename = function (newName) {
+File.prototype.rename = function (newname) {
+    this.checkIfExists();
 
     const {
-        exists,
-        fullPath,
-        filePath
+        filepath,
+        filedir,
     } = this;
 
-    if (!exists) throw new Error("File doesn't exist. ");
-
-    if (typeof newName != 'string')
-        throw new Error("File.rename expects a string got :" + newName);
-
-    const oldpath = fullPath;
-    const newpath = filePath + '/' + newName;
+    const newpath = path.join(filedir, newname);
 
     return newPromise(resolver => {
-        fs.rename(oldpath, newpath, resolver);
+        fs.rename(filepath, newpath, resolver);
     });
-}
-
-
-// ---------------------------------------------------------------
-// File deletion
-// ---------------------------------------------------------------
+};
 
 File.prototype.delete = function () {
-
-    const {
-        fullPath,
-        exists
-    } = this;
-
-    if (!exists) throw new Error("File doesn't exist. ");
+    this.checkIfExists();
 
     return newPromise(resolver => {
-        fs.unlink(fullPath, resolver);
+        fs.unlink(this.filepath, resolver);
     });
-}
-
-// ---------------------------------------------------------------
-// Reading a file
-// ---------------------------------------------------------------
+};
 
 File.prototype.read = function (encoding = 'utf8') {
-
-    if (!this.exists) throw new Error("File doesn't exist. ");
+    this.checkIfExists();
 
     return newPromise(resolver => {
-        fs.readFile(this.fullPath, ecnoding, resolver);
+        fs.readFile(this.filepath, encoding, resolver);
     });
-}
+};
 
 File.prototype.readSync = function (encoding = 'utf8') {
+    this.checkIfExists();
 
-    if (!this.exists) throw new Error("File doesn't exist. ");
+    return fs.readFileSync(this.filepath, encoding);
+};
 
-    return fs.readFileSync(this.fullPath, encoding);
-}
+File.prototype.getLinesSync = function () {
+    this.checkIfExists();
+    const data = this.readSync();
+
+    return data.split('\n');
+};
 
 File.prototype.getLines = function () {
     return newPromise(resolver => {
-        const ReadStream = this.getReadStream();
-
-        if(!ReadStream) 
-            throw new Error("Cannot get readstream from file:", this.fullPath);
-
-        let currentBuffer = '';
-        let lines = [];
-
-        ReadStream.on('data', data => {
-            try {
-                currentBuffer += data;
-                
-                let indexOfNewLine = currentBuffer.indexOf('\n');
-    
-                while(indexOfNewLine != -1) {
-                    const line = currentBuffer.substring(0, indexOfNewLine);
-                    currentBuffer = currentBuffer.substring(indexOfNewLine + 1);
-                    indexOfNewLine = currentBuffer.indexOf('\n');
-                    lines.push(line);
-                }
-            } catch (err) {
-                resolver(err, lines)
-            }
-        });
-
-        ReadStream.on('end', () => {
-            if(currentBuffer.length > 0)
-                lines.push(currentBuffer);
-            resolver(false, lines);
-        });
-    })
-}
+        try {
+            const data = this.getLinesSync();
+            resolver(null, data);
+        } catch (err) {
+            resolver(err, null);
+        }
+    });
+};
 
 File.prototype.getReadStream = function () {
-    return fs.createReadStream(this.fullPath);
-}
+    this.checkIfExists();
 
-// ---------------------------------------------------------------
-// Write to a file
-// ---------------------------------------------------------------
+    if (!this.readstream)
+        this.readstream = fs.createReadStream();
+
+    return this.readstream;
+};
 
 File.prototype.write = function (data) {
-
-    if (typeof data != 'string')
-        throw new Error("File.write expects data as a string, got : " + data);
-
     return newPromise(resolver => {
-        fs.writeFile(this.fullPath, data, (err) => {
+        fs.writeFile(this.filepath, data, (err) => {
             this.exists = true;
             resolver(err, data);
         });
     });
-}
+};
 
 File.prototype.getWriteStream = function () {
-    return fs.createWriteStream(this.fullPath);
-}
-
-// ---------------------------------------------------------------
-// Append to a file
-// ---------------------------------------------------------------
+    return fs.createWriteStream(this.filepath);
+};
 
 File.prototype.append = function (data) {
-
-    if (typeof data != 'string')
-        throw new Error("File.appned expects data as a string, got : " + data);
-
-    const { fullPath } = this;
-        
     return newPromise(resolver => {
-        fs.appendFile(fullPath, data, resolver)
+        fs.appendFile(this.filepath, data, resolver);
     });
-}
+};
 
 File.prototype.appendNewLine = function (data) {
-    this.append('\n' + data);
-}
-
-// ---------------------------------------------------------------
-// Duplication
-// ---------------------------------------------------------------
+    return this.append('\n' + data);
+};
 
 File.prototype.duplicate = function (name) {
-
-    if (typeof name != 'string')
-        throw new Error("File.duplicate expects name as a string, got : " + name);
+    this.checkIfExists();
 
     return newPromise(resolver => {
-        fs.copyFile(this.fullPath, name, resolver)
+        fs.copyFile(this.filepath, name, resolver);
     });
-}
+};
 
-// Export
 module.exports = File;
